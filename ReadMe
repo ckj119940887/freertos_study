@@ -1,0 +1,7 @@
+参考网站：
+https://blog.csdn.net/crazyskady/article/details/79405813
+
+从网上粘下来的Makefile和subdir.mk的代码：要将所有的空格替换为tab，否则不能执行
+还要在根目录下建立一个tmp文件夹
+
+然后执行make all
