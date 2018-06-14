@@ -76,6 +76,20 @@ extern "C" {
 #define portSTACK_TYPE  unsigned long
 #define portBASE_TYPE   long
 
+typedef portSTACK_TYPE StackType_t;
+typedef portBASE_TYPE BaseType_t;
+typedef unsigned long UBaseType_t;
+
+#define portTICK_PERIOD_MS      ( ( TickType_t ) 1000 / configTICK_RATE_HZ )
+#if( configUSE_16_BIT_TICKS == 1 )
+        typedef unsigned portSHORT TickType_t;
+        #define portMAX_DELAY ( TickType_t ) 0xffff
+#else
+        typedef unsigned portLONG TickType_t;
+        #define portMAX_DELAY ( TickType_t ) 0xffffffff
+#endif
+
+/*
 #if( configUSE_16_BIT_TICKS == 1 )
 	typedef unsigned portSHORT portTickType;
 	#define portMAX_DELAY ( portTickType ) 0xffff
@@ -83,6 +97,7 @@ extern "C" {
 	typedef unsigned portLONG portTickType;
 	#define portMAX_DELAY ( portTickType ) 0xffffffff
 #endif
+*/
 /*-----------------------------------------------------------*/
 
 /* Architecture specifics. */

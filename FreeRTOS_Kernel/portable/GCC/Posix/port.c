@@ -409,7 +409,8 @@ pthread_t xTaskToResume;
 
 			xTaskToSuspend = prvGetThreadHandle( xTaskGetCurrentTaskHandle() );
 			/* Tick Increment. */
-			vTaskIncrementTick();
+			/* 这里原来的函数是vPortSystemTickHandler，但是总报错undefined */
+			xTaskIncrementTick();
 
 			/* Select Next Task. */
 #if ( configUSE_PREEMPTION == 1 )
