@@ -289,36 +289,45 @@ to its original value when it is released. */
  * Task control block.  A task control block (TCB) is allocated for each task,
  * and stores task state information, including a pointer to the task's context
  * (the task's run time environment, including register values)
+ * 任务控制块
  */
 typedef struct tskTaskControlBlock
 {
+	// 任务堆栈栈顶
 	volatile StackType_t	*pxTopOfStack;	/*< Points to the location of the last item placed on the tasks stack.  THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT. */
 
-	#if ( portUSING_MPU_WRAPPERS == 1 )
+	#if ( portUSING_MPU_WRAPPERS == 1 )	// MPU相关设置
 		xMPU_SETTINGS	xMPUSettings;		/*< The MPU settings are defined as part of the port layer.  THIS MUST BE THE SECOND MEMBER OF THE TCB STRUCT. */
 	#endif
 
+	//状态列表项
 	ListItem_t			xStateListItem;	/*< The list that the state list item of a task is reference from denotes the state of that task (Ready, Blocked, Suspended ). */
+	//事件列表项
 	ListItem_t			xEventListItem;		/*< Used to reference a task from an event list. */
+	//任务优先级
 	UBaseType_t			uxPriority;			/*< The priority of the task.  0 is the lowest priority. */
+	//任务堆栈起始地址
 	StackType_t			*pxStack;			/*< Points to the start of the stack. */
+	//任务名字
 	char				pcTaskName[ configMAX_TASK_NAME_LEN ];/*< Descriptive name given to the task when created.  Facilitates debugging only. */ /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 
-	#if ( portSTACK_GROWTH > 0 )
+	#if ( portSTACK_GROWTH > 0 )	//任务堆栈栈底，stack从低地址开始增长
 		StackType_t		*pxEndOfStack;		/*< Points to the end of the stack on architectures where the stack grows up from low memory. */
 	#endif
 
-	#if ( portCRITICAL_NESTING_IN_TCB == 1 )
+	#if ( portCRITICAL_NESTING_IN_TCB == 1 )	//临界区嵌套深度
 		UBaseType_t		uxCriticalNesting;	/*< Holds the critical section nesting depth for ports that do not maintain their own count in the port layer. */
 	#endif
 
-	#if ( configUSE_TRACE_FACILITY == 1 )
+	#if ( configUSE_TRACE_FACILITY == 1 )	//trace和debug时用到
 		UBaseType_t		uxTCBNumber;		/*< Stores a number that increments each time a TCB is created.  It allows debuggers to determine when a task has been deleted and then recreated. */
 		UBaseType_t		uxTaskNumber;		/*< Stores a number specifically for use by third party trace code. */
 	#endif
 
 	#if ( configUSE_MUTEXES == 1 )
+		//任务基础优先级，优先级反转时用到
 		UBaseType_t		uxBasePriority;		/*< The priority last assigned to the task - used by the priority inheritance mechanism. */
+		//任务获取到互斥信号量的个数
 		UBaseType_t		uxMutexesHeld;
 	#endif
 
@@ -334,7 +343,7 @@ typedef struct tskTaskControlBlock
 		uint32_t		ulRunTimeCounter;	/*< Stores the amount of time the task has spent in the Running state. */
 	#endif
 
-	#if ( configUSE_NEWLIB_REENTRANT == 1 )
+	#if ( configUSE_NEWLIB_REENTRANT == 1 )	//定义一个newlib结构体变量
 		/* Allocate a Newlib reent structure that is specific to this task.
 		Note Newlib support has been included by popular demand, but is not
 		used by the FreeRTOS maintainers themselves.  FreeRTOS is not
@@ -345,14 +354,14 @@ typedef struct tskTaskControlBlock
 		struct	_reent xNewLib_reent;
 	#endif
 
-	#if( configUSE_TASK_NOTIFICATIONS == 1 )
-		volatile uint32_t ulNotifiedValue;
-		volatile uint8_t ucNotifyState;
+	#if( configUSE_TASK_NOTIFICATIONS == 1 )	//任务通知相关变量
+		volatile uint32_t ulNotifiedValue;		//任务通知值
+		volatile uint8_t ucNotifyState;			//任务通知状态
 	#endif
 
 	/* See the comments above the definition of
 	tskSTATIC_AND_DYNAMIC_ALLOCATION_POSSIBLE. */
-	#if( tskSTATIC_AND_DYNAMIC_ALLOCATION_POSSIBLE != 0 )
+	#if( tskSTATIC_AND_DYNAMIC_ALLOCATION_POSSIBLE != 0 )	//用来标记任务是动态创建的还是静态创建的，pdTRUE代表静态创建，pdFALSE代表动态创建
 		uint8_t	ucStaticallyAllocated; 		/*< Set to pdTRUE if the task is a statically allocated to ensure no attempt is made to free the memory. */
 	#endif
 
@@ -588,7 +597,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 									const uint32_t ulStackDepth,
 									void * const pvParameters,
 									UBaseType_t uxPriority,
-									StackType_t * const puxStackBuffer,
+									StackType_t * const puxStackBuffer,	//由用户自行定义任务堆栈
 									StaticTask_t * const pxTaskBuffer ) /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 	{
 	TCB_t *pxNewTCB;

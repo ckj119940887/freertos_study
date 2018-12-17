@@ -725,7 +725,7 @@ extern "C" {
 #endif
 
 #ifndef configUSE_TIME_SLICING
-	#define configUSE_TIME_SLICING 1
+	#define configUSE_TIME_SLICING 1	//表示多个任务可以共用一个优先级
 #endif
 
 #ifndef configINCLUDE_APPLICATION_DEFINED_PRIVILEGED_FUNCTIONS

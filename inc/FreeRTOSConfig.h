@@ -84,7 +84,7 @@
 #define configQUEUE_REGISTRY_SIZE		0
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY	1
 
-#define configMAX_PRIORITIES		( ( unsigned portBASE_TYPE ) 10 )
+#define configMAX_PRIORITIES		( ( unsigned portBASE_TYPE ) 10 )	//所有任务所支持的最大优先级，其优先级范围是从0-(configMAX_PRIORITIES-1)
 #define configMAX_CO_ROUTINE_PRIORITIES ( 2 )
 
 /* Set the following definitions to 1 to include the API function, or zero
