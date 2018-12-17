@@ -256,6 +256,8 @@ count overflows. */
  * Place the task represented by pxTCB into the appropriate ready list for
  * the task.  It is inserted at the end of the list.
  */
+//taskRECORD_READY_PRIORITY用来记录处于就绪态的任务
+//使用vListInsertEnd将任务添加到就绪队列末尾
 #define prvAddTaskToReadyList( pxTCB )																\
 	traceMOVED_TASK_TO_READY_STATE( pxTCB );														\
 	taskRECORD_READY_PRIORITY( ( pxTCB )->uxPriority );												\
@@ -381,7 +383,7 @@ static variables must be declared volatile. */
 PRIVILEGED_DATA TCB_t * volatile pxCurrentTCB = NULL;
 
 /* Lists for ready and blocked tasks. --------------------*/
-PRIVILEGED_DATA static List_t pxReadyTasksLists[ configMAX_PRIORITIES ];/*< Prioritised ready tasks. */
+PRIVILEGED_DATA static List_t pxReadyTasksLists[ configMAX_PRIORITIES ];/*< Prioritised ready tasks. */	//就绪队列，每个优先级一个表，具有相同优先级的任务使用同一个列表
 PRIVILEGED_DATA static List_t xDelayedTaskList1;						/*< Delayed tasks. */
 PRIVILEGED_DATA static List_t xDelayedTaskList2;						/*< Delayed tasks (two lists are used - one for delays that have overflowed the current tick count. */
 PRIVILEGED_DATA static List_t * volatile pxDelayedTaskList;				/*< Points to the delayed task list currently being used. */
@@ -586,6 +588,7 @@ static void prvInitialiseNewTask( 	TaskFunction_t pxTaskCode,
  * Called after a new task has been created and initialised to place the task
  * under the control of the scheduler.
  */
+//将新创建的任务添加到就绪队列
 static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 
 /*-----------------------------------------------------------*/
@@ -812,6 +815,7 @@ UBaseType_t x;
 	#if( ( configCHECK_FOR_STACK_OVERFLOW > 1 ) || ( configUSE_TRACE_FACILITY == 1 ) || ( INCLUDE_uxTaskGetStackHighWaterMark == 1 ) )
 	{
 		/* Fill the stack with a known value to assist debugging. */
+		//如果使能了堆栈溢出检测功能或追踪功能，使用定值tskSTACK_FILL_BYTE来填充任务堆栈
 		( void ) memset( pxNewTCB->pxStack, ( int ) tskSTACK_FILL_BYTE, ( size_t ) ulStackDepth * sizeof( StackType_t ) );
 	}
 	#endif /* ( ( configCHECK_FOR_STACK_OVERFLOW > 1 ) || ( ( configUSE_TRACE_FACILITY == 1 ) || ( INCLUDE_uxTaskGetStackHighWaterMark == 1 ) ) ) */
@@ -820,7 +824,8 @@ UBaseType_t x;
 	grows from high memory to low (as per the 80x86) or vice versa.
 	portSTACK_GROWTH is used to make the result positive or negative as required
 	by the port. */
-	#if( portSTACK_GROWTH < 0 )
+	//计算堆栈栈顶 pxTopOfStack,后面初始化堆栈的时候需要用到
+	#if( portSTACK_GROWTH < 0 )	//按递减的方向使用堆栈，栈顶在高地址，栈底在低地址
 	{
 		pxTopOfStack = pxNewTCB->pxStack + ( ulStackDepth - ( uint32_t ) 1 );
 		pxTopOfStack = ( StackType_t * ) ( ( ( portPOINTER_SIZE_TYPE ) pxTopOfStack ) & ( ~( ( portPOINTER_SIZE_TYPE ) portBYTE_ALIGNMENT_MASK ) ) ); /*lint !e923 MISRA exception.  Avoiding casts between pointers and integers is not practical.  Size differences accounted for using portPOINTER_SIZE_TYPE type. */
@@ -828,9 +833,9 @@ UBaseType_t x;
 		/* Check the alignment of the calculated top of stack is correct. */
 		configASSERT( ( ( ( portPOINTER_SIZE_TYPE ) pxTopOfStack & ( portPOINTER_SIZE_TYPE ) portBYTE_ALIGNMENT_MASK ) == 0UL ) );
 	}
-	#else /* portSTACK_GROWTH */
+	#else /* portSTACK_GROWTH */	//按递增的方向使用堆栈，栈顶在低地址，栈底在高地址
 	{
-		pxTopOfStack = pxNewTCB->pxStack;
+		pxTopOfStack = pxNewTCB->pxStack;	
 
 		/* Check the alignment of the stack buffer is correct. */
 		configASSERT( ( ( ( portPOINTER_SIZE_TYPE ) pxNewTCB->pxStack & ( portPOINTER_SIZE_TYPE ) portBYTE_ALIGNMENT_MASK ) == 0UL ) );
@@ -844,7 +849,7 @@ UBaseType_t x;
 	/* Store the task name in the TCB. */
 	for( x = ( UBaseType_t ) 0; x < ( UBaseType_t ) configMAX_TASK_NAME_LEN; x++ )
 	{
-		pxNewTCB->pcTaskName[ x ] = pcName[ x ];
+		pxNewTCB->pcTaskName[ x ] = pcName[ x ];	//保存任务名
 
 		/* Don't copy all configMAX_TASK_NAME_LEN if the string is shorter than
 		configMAX_TASK_NAME_LEN characters just in case the memory after the
@@ -861,10 +866,12 @@ UBaseType_t x;
 
 	/* Ensure the name string is terminated in the case that the string length
 	was greater or equal to configMAX_TASK_NAME_LEN. */
+	//任务名数组添加字符串结束符
 	pxNewTCB->pcTaskName[ configMAX_TASK_NAME_LEN - 1 ] = '\0';
 
 	/* This is used as an array index so must ensure it's not too large.  First
 	remove the privilege bit if one is present. */
+	//判断任务优先级是否合法，如果设置的任务优先级大于configMAX_PRIORITIES，将优先级修改为configMAX_PRIORITIES-1
 	if( uxPriority >= ( UBaseType_t ) configMAX_PRIORITIES )
 	{
 		uxPriority = ( UBaseType_t ) configMAX_PRIORITIES - ( UBaseType_t ) 1U;
@@ -875,7 +882,7 @@ UBaseType_t x;
 	}
 
 	pxNewTCB->uxPriority = uxPriority;
-	#if ( configUSE_MUTEXES == 1 )
+	#if ( configUSE_MUTEXES == 1 )	//如果使能了互斥信号量，初始化相应字段
 	{
 		pxNewTCB->uxBasePriority = uxPriority;
 		pxNewTCB->uxMutexesHeld = 0;
@@ -887,24 +894,31 @@ UBaseType_t x;
 
 	/* Set the pxNewTCB as a link back from the ListItem_t.  This is so we can get
 	back to	the containing TCB from a generic item in a list. */
+	//设置xStateListItem属于当前任务控制块
 	listSET_LIST_ITEM_OWNER( &( pxNewTCB->xStateListItem ), pxNewTCB );
 
 	/* Event lists are always in priority order. */
+	//设置列表项 xEventListItem 的字段 xItemValue 为 configMAX_PRIORITIES- uxPriority,比如当前任务优先级 3,
+	//最大优先级为 32,那么 xItemValue 就为 32-3=29,这就意味着 xItemValue值越大,优先级就越小。列表的插入是按照xItemValue 的值升序排列的。
 	listSET_LIST_ITEM_VALUE( &( pxNewTCB->xEventListItem ), ( TickType_t ) configMAX_PRIORITIES - ( TickType_t ) uxPriority ); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
+	//设置xEventListItem属于当前任务控制块
 	listSET_LIST_ITEM_OWNER( &( pxNewTCB->xEventListItem ), pxNewTCB );
 
+	//使能临界区嵌套
 	#if ( portCRITICAL_NESTING_IN_TCB == 1 )
 	{
 		pxNewTCB->uxCriticalNesting = ( UBaseType_t ) 0U;
 	}
 	#endif /* portCRITICAL_NESTING_IN_TCB */
-
+	
+	//使能任务标签功能
 	#if ( configUSE_APPLICATION_TASK_TAG == 1 )
 	{
 		pxNewTCB->pxTaskTag = NULL;
 	}
 	#endif /* configUSE_APPLICATION_TASK_TAG */
 
+	//使能时间统计功能
 	#if ( configGENERATE_RUN_TIME_STATS == 1 )
 	{
 		pxNewTCB->ulRunTimeCounter = 0UL;
@@ -931,6 +945,7 @@ UBaseType_t x;
 	}
 	#endif
 
+	//使能任务通知功能
 	#if ( configUSE_TASK_NOTIFICATIONS == 1 )
 	{
 		pxNewTCB->ulNotifiedValue = 0;
@@ -938,6 +953,7 @@ UBaseType_t x;
 	}
 	#endif
 
+	//使能NEWLIB功能
 	#if ( configUSE_NEWLIB_REENTRANT == 1 )
 	{
 		/* Initialise this task's Newlib reent structure. */
@@ -945,6 +961,7 @@ UBaseType_t x;
 	}
 	#endif
 
+	//使能函数xTaskAbortDelay()
 	#if( INCLUDE_xTaskAbortDelay == 1 )
 	{
 		pxNewTCB->ucDelayAborted = pdFALSE;
@@ -955,6 +972,7 @@ UBaseType_t x;
 	but had been interrupted by the scheduler.  The return address is set
 	to the start of the task function. Once the stack has been initialised
 	the	top of stack variable is updated. */
+	//调用函数 pxPortInitialiseStack()初始化任务堆栈
 	#if( portUSING_MPU_WRAPPERS == 1 )
 	{
 		pxNewTCB->pxTopOfStack = pxPortInitialiseStack( pxTopOfStack, pxTaskCode, pvParameters, xRunPrivileged );
@@ -969,6 +987,7 @@ UBaseType_t x;
 	{
 		/* Pass the handle out in an anonymous way.  The handle can be used to
 		change the created task's priority, delete the created task, etc.*/
+		//生成任务句柄，即任务控制块
 		*pxCreatedTask = ( TaskHandle_t ) pxNewTCB;
 	}
 	else
@@ -977,21 +996,21 @@ UBaseType_t x;
 	}
 }
 /*-----------------------------------------------------------*/
-
+//将新创建的任务添加到就绪队列
 static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 {
 	/* Ensure interrupts don't access the task lists while the lists are being
 	updated. */
 	taskENTER_CRITICAL();
 	{
-		uxCurrentNumberOfTasks++;
-		if( pxCurrentTCB == NULL )
+		uxCurrentNumberOfTasks++;	//全局变量，用于统计任务数量
+		if( pxCurrentTCB == NULL )	//如果任务块为NULL，说明没有任务运行
 		{
 			/* There are no other tasks, or all the other tasks are in
 			the suspended state - make this the current task. */
-			pxCurrentTCB = pxNewTCB;
+			pxCurrentTCB = pxNewTCB;	//新创建的任务是第一个任务，将新任务的任务控制块赋值给pxCurrentTCB
 
-			if( uxCurrentNumberOfTasks == ( UBaseType_t ) 1 )
+			if( uxCurrentNumberOfTasks == ( UBaseType_t ) 1 )	//全局任务数量为1，表明是第一个任务
 			{
 				/* This is the first task to be created so do the preliminary
 				initialisation required.  We will not recover if this call
@@ -1010,6 +1029,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 			so far. */
 			if( xSchedulerRunning == pdFALSE )
 			{
+				//新任务的优先级高于正在运行任务的优先级
 				if( pxCurrentTCB->uxPriority <= pxNewTCB->uxPriority )
 				{
 					pxCurrentTCB = pxNewTCB;
@@ -1045,6 +1065,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 	{
 		/* If the created task is of a higher priority than the current task
 		then it should run now. */
+		//新任务优先级比正在运行的任务优先级高而且调度器已经开始正常运行了，那么就调用函数taskYIELD_IF_USING_PREEMPTION()完成一次任务切换
 		if( pxCurrentTCB->uxPriority < pxNewTCB->uxPriority )
 		{
 			taskYIELD_IF_USING_PREEMPTION();
@@ -1071,9 +1092,11 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 		{
 			/* If null is passed in here then it is the calling task that is
 			being deleted. */
+			//如果参数位NULL，说明要删除任务自身
 			pxTCB = prvGetTCBFromHandle( xTaskToDelete );
 
 			/* Remove task from the ready list. */
+			//将任务从就绪队列中删除
 			if( uxListRemove( &( pxTCB->xStateListItem ) ) == ( UBaseType_t ) 0 )
 			{
 				taskRESET_READY_PRIORITY( pxTCB->uxPriority );
@@ -1084,6 +1107,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 			}
 
 			/* Is the task waiting on an event also? */
+			//查看任务是不是正在等待某个事件(如信号量，队列)，如果任务等待某个事件，则这个任务会被放到相应的列表中，这里需要将其从相应的列表中删除
 			if( listLIST_ITEM_CONTAINER( &( pxTCB->xEventListItem ) ) != NULL )
 			{
 				( void ) uxListRemove( &( pxTCB->xEventListItem ) );
@@ -1099,18 +1123,22 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 			not return. */
 			uxTaskNumber++;
 
-			if( pxTCB == pxCurrentTCB )
+			if( pxTCB == pxCurrentTCB )	//删除正在运行的任务
 			{
 				/* A task is deleting itself.  This cannot complete within the
 				task itself, as a context switch to another task is required.
 				Place the task in the termination list.  The idle task will
 				check the termination list and free up any memory allocated by
 				the scheduler for the TCB and stack of the deleted task. */
+				//任务控制块和任务堆栈所占用的内存肯定要被释放掉，但是当前任务正在运行，显然不能立即释放
+				//所以这里需要做个标记，将当前任务添加到xTasksWaitingTermination列表中
+				//同理当任务要删除自身时，也会被添加到xTasksWaitingTermination列表中
 				vListInsertEnd( &xTasksWaitingTermination, &( pxTCB->xStateListItem ) );
 
 				/* Increment the ucTasksDeleted variable so the idle task knows
 				there is a task that has been deleted and that it should therefore
 				check the xTasksWaitingTermination list. */
+				//全局变量，用来记录有多少个任务需要释放内存
 				++uxDeletedTasksWaitingCleanUp;
 
 				/* The pre-delete hook is primarily for the Windows simulator,
@@ -1118,15 +1146,19 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 				after which it is not possible to yield away from this task -
 				hence xYieldPending is used to latch that a context switch is
 				required. */
+				//调用任务删除钩子函数，该函数的具体内容需要用户自行实现
 				portPRE_TASK_DELETE_HOOK( pxTCB, &xYieldPending );
 			}
 			else
 			{
+				//删除的是别的任务，当前任务数建议
 				--uxCurrentNumberOfTasks;
+				//删除的是别的任务，可以直接删除任务控制块
 				prvDeleteTCB( pxTCB );
 
 				/* Reset the next expected unblock time in case it referred to
 				the task that has just been deleted. */
+				//重新计算下还要多长时间执行下一个任务，也就是下一个任务的解锁时间，防止有任务的解锁时间参考了刚刚被删除的任务
 				prvResetNextTaskUnblockTime();
 			}
 
@@ -1136,6 +1168,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 
 		/* Force a reschedule if it is the currently running task that has just
 		been deleted. */
+		//如果删除的任务是正在运行的任务，删除完以后肯定需要强制进行一次任务切换
 		if( xSchedulerRunning != pdFALSE )
 		{
 			if( pxTCB == pxCurrentTCB )

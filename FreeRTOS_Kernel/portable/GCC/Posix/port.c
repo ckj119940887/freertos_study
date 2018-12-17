@@ -139,6 +139,7 @@ void vPortStartFirstTask( void );
 /*
  * See header file for description.
  */
+//进行堆栈的初始化
 portSTACK_TYPE *pxPortInitialiseStack( portSTACK_TYPE *pxTopOfStack, pdTASK_CODE pxCode, void *pvParameters )
 {
 /* Should actually keep this struct on the stack. */
