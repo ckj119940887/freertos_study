@@ -707,8 +707,10 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 				/* Allocate space for the stack used by the task being created.
 				The base of the stack memory stored in the TCB so the task can
 				be deleted later if required. */
+				//任务的任务堆栈申请内存,申请内存的时候会做字节对齐处理
 				pxNewTCB->pxStack = ( StackType_t * ) pvPortMalloc( ( ( ( size_t ) usStackDepth ) * sizeof( StackType_t ) ) ); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
 
+				//任务栈分配失败
 				if( pxNewTCB->pxStack == NULL )
 				{
 					/* Could not allocate the stack.  Delete the allocated TCB. */
@@ -724,6 +726,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 			/* Allocate space for the stack used by the task being created. */
 			pxStack = ( StackType_t * ) pvPortMalloc( ( ( ( size_t ) usStackDepth ) * sizeof( StackType_t ) ) ); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
 
+			//如果堆栈的内存申请成功的话就接着给任务控制块申请内存, 同样使用函数pvPortMalloc()
 			if( pxStack != NULL )
 			{
 				/* Allocate space for the TCB. */
@@ -732,12 +735,14 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 				if( pxNewTCB != NULL )
 				{
 					/* Store the stack location in the TCB. */
+					//任务控制块内存申请成功的话就初始化内存控制块中的任务堆栈字段 pxStack
 					pxNewTCB->pxStack = pxStack;
 				}
 				else
 				{
 					/* The stack cannot be used as the TCB was not created.  Free
 					it again. */
+					//任务控制块内存申请失败的话就释放前面已经申请成功的任务堆栈的内存
 					vPortFree( pxStack );
 				}
 			}
@@ -754,11 +759,14 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 			{
 				/* Tasks can be created statically or dynamically, so note this
 				task was created dynamically in case it is later deleted. */
-				pxNewTCB->ucStaticallyAllocated = tskDYNAMICALLY_ALLOCATED_STACK_AND_TCB;
+				//标记任务堆栈和任务控制块是使用动态内存分配方法得到的。
+				pxNewTCB->ucStaticallyAllocated = tskDYNAMICALLY_ALLOCATED_STACK_AND_TCB;	
 			}
 			#endif /* configSUPPORT_STATIC_ALLOCATION */
-
+			
+			//使用函数 prvInitialiseNewTask()初始化任务,这个函数完成对任务控制块中各个字段的初始化工作!
 			prvInitialiseNewTask( pxTaskCode, pcName, ( uint32_t ) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, NULL );
+			//将新创建的任务加入到就绪列表
 			prvAddNewTaskToReadyList( pxNewTCB );
 			xReturn = pdPASS;
 		}
@@ -773,6 +781,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 #endif /* configSUPPORT_DYNAMIC_ALLOCATION */
 /*-----------------------------------------------------------*/
 
+//完成对任务的初始化
 static void prvInitialiseNewTask( 	TaskFunction_t pxTaskCode,
 									const char * const pcName,
 									const uint32_t ulStackDepth,
@@ -1832,6 +1841,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 #endif /* ( ( INCLUDE_xTaskResumeFromISR == 1 ) && ( INCLUDE_vTaskSuspend == 1 ) ) */
 /*-----------------------------------------------------------*/
 
+//开启任务调度器
 void vTaskStartScheduler( void )
 {
 BaseType_t xReturn;
@@ -1874,7 +1884,7 @@ BaseType_t xReturn;
 	}
 	#endif /* configSUPPORT_STATIC_ALLOCATION */
 
-	#if ( configUSE_TIMERS == 1 )
+	#if ( configUSE_TIMERS == 1 )	//使用软件定时器
 	{
 		if( xReturn == pdPASS )
 		{
@@ -1887,13 +1897,14 @@ BaseType_t xReturn;
 	}
 	#endif /* configUSE_TIMERS */
 
-	if( xReturn == pdPASS )
+	if( xReturn == pdPASS )	//空闲任务和定时器任务创建成功
 	{
 		/* Interrupts are turned off here, to ensure a tick does not occur
 		before or during the call to xPortStartScheduler().  The stacks of
 		the created tasks contain a status word with interrupts switched on
 		so interrupts will automatically get re-enabled when the first task
 		starts to run. */
+		//关闭中断
 		portDISABLE_INTERRUPTS();
 
 		#if ( configUSE_NEWLIB_REENTRANT == 1 )
@@ -1905,7 +1916,7 @@ BaseType_t xReturn;
 		#endif /* configUSE_NEWLIB_REENTRANT */
 
 		xNextTaskUnblockTime = portMAX_DELAY;
-		xSchedulerRunning = pdTRUE;
+		xSchedulerRunning = pdTRUE;	//调度器开始运行
 		xTickCount = ( TickType_t ) 0U;
 
 		/* If configGENERATE_RUN_TIME_STATS is defined then the following
@@ -1925,7 +1936,7 @@ BaseType_t xReturn;
 			/* Should only reach here if a task calls xTaskEndScheduler(). */
 		}
 	}
-	else
+	else	//系统内核没有启动成功，在创建空闲任务和定时器任务时没有足够的内存
 	{
 		/* This line will only be reached if the kernel could not be started,
 		because there was not enough FreeRTOS heap to create the idle task

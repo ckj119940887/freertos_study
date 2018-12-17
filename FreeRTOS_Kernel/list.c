@@ -11,17 +11,21 @@ void vListInitialise( List_t * const pxList )
 	/* The list structure contains a list item which is used to mark the
 	end of the list.  To initialise the list the list end is inserted
 	as the only list entry. */
+	//当前列表中只有一个表项
 	pxList->pxIndex = ( ListItem_t * ) &( pxList->xListEnd );			/*lint !e826 !e740 The mini list structure is used as the list end to save RAM.  This is checked and valid. */
 
 	/* The list end value is the highest possible value in the list to
 	ensure it remains at the end of the list. */
+	//portMAX_DELAY定义于portmacro.h
 	pxList->xListEnd.xItemValue = portMAX_DELAY;
 
 	/* The list end next and previous pointers point to itself so we know
 	when the list is empty. */
+	//只有一个表项，只能指向自身
 	pxList->xListEnd.pxNext = ( ListItem_t * ) &( pxList->xListEnd );	/*lint !e826 !e740 The mini list structure is used as the list end to save RAM.  This is checked and valid. */
 	pxList->xListEnd.pxPrevious = ( ListItem_t * ) &( pxList->xListEnd );/*lint !e826 !e740 The mini list structure is used as the list end to save RAM.  This is checked and valid. */
 
+	//表项数量为0
 	pxList->uxNumberOfItems = ( UBaseType_t ) 0U;
 
 	/* Write known values into the list if
@@ -43,6 +47,7 @@ void vListInitialiseItem( ListItem_t * const pxItem )
 }
 /*-----------------------------------------------------------*/
 
+//列表项的末尾插入
 void vListInsertEnd( List_t * const pxList, ListItem_t * const pxNewListItem )
 {
 ListItem_t * const pxIndex = pxList->pxIndex;
@@ -75,6 +80,7 @@ ListItem_t * const pxIndex = pxList->pxIndex;
 void vListInsert( List_t * const pxList, ListItem_t * const pxNewListItem )
 {
 ListItem_t *pxIterator;
+//列表项插入的位置由xItemValue决定，列表中的列表项按照xItemValue的升序方式排列
 const TickType_t xValueOfInsertion = pxNewListItem->xItemValue;
 
 	/* Only effective when configASSERT() is also defined, these tests may catch
@@ -91,9 +97,9 @@ const TickType_t xValueOfInsertion = pxNewListItem->xItemValue;
 	share of the CPU.  However, if the xItemValue is the same as the back marker
 	the iteration loop below will not end.  Therefore the value is checked
 	first, and the algorithm slightly modified if necessary. */
-	if( xValueOfInsertion == portMAX_DELAY )
+	if( xValueOfInsertion == portMAX_DELAY )	//如果列表值为最大值，则要插入的位置位于列表的末尾
 	{
-		pxIterator = pxList->xListEnd.pxPrevious;
+		pxIterator = pxList->xListEnd.pxPrevious;	//获取要插入的位置
 	}
 	else
 	{
@@ -125,7 +131,7 @@ const TickType_t xValueOfInsertion = pxNewListItem->xItemValue;
 			insertion position. */
 		}
 	}
-
+	//双端链表的插入
 	pxNewListItem->pxNext = pxIterator->pxNext;
 	pxNewListItem->pxNext->pxPrevious = pxNewListItem;
 	pxNewListItem->pxPrevious = pxIterator;
@@ -139,6 +145,8 @@ const TickType_t xValueOfInsertion = pxNewListItem->xItemValue;
 }
 /*-----------------------------------------------------------*/
 
+//返回删除列表项后剩余的表项数目
+//如果列表项是动态分配的，则表项的删除只是从列表中删除，并不释放表项
 UBaseType_t uxListRemove( ListItem_t * const pxItemToRemove )
 {
 /* The list item knows which list it is in.  Obtain the list from the list
@@ -152,7 +160,7 @@ List_t * const pxList = ( List_t * ) pxItemToRemove->pvContainer;
 	mtCOVERAGE_TEST_DELAY();
 
 	/* Make sure the index is left pointing to a valid item. */
-	if( pxList->pxIndex == pxItemToRemove )
+	if( pxList->pxIndex == pxItemToRemove )	//如果要删除的表项就是pxIndex所指的，需要为pxIndex找个对象
 	{
 		pxList->pxIndex = pxItemToRemove->pxPrevious;
 	}
