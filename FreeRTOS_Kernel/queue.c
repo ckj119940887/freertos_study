@@ -129,34 +129,49 @@ zero. */
  */
 typedef struct QueueDefinition
 {
+	//指向队列存储区开始地址。
 	int8_t *pcHead;					/*< Points to the beginning of the queue storage area. */
+	//指向队列存储区最后一个字节。
 	int8_t *pcTail;					/*< Points to the byte at the end of the queue storage area.  Once more byte is allocated than necessary to store the queue items, this is used as a marker. */
+	//指向存储区中下一个空闲区域。
 	int8_t *pcWriteTo;				/*< Points to the free next place in the storage area. */
 
 	union							/* Use of a union is an exception to the coding standard to ensure two mutually exclusive structure members don't appear simultaneously (wasting RAM). */
 	{
+		//当用作队列的时候指向最后一个出队的队列项首地址
 		int8_t *pcReadFrom;			/*< Points to the last place that a queued item was read from when the structure is used as a queue. */
+		//当用作递归互斥量的时候用来记录递归互斥量被调用的次数。
 		UBaseType_t uxRecursiveCallCount;/*< Maintains a count of the number of times a recursive mutex has been recursively 'taken' when the structure is used as a mutex. */
 	} u;
 
+	//等待发送任务列表,那些因为队列满导致入队失败而进入阻塞态的任务就会挂到此列表上。
 	List_t xTasksWaitingToSend;		/*< List of tasks that are blocked waiting to post onto this queue.  Stored in priority order. */
+	//等待接收任务列表,那些因为队列空导致出队失败而进入阻塞态的任务就会挂到此列表上。
 	List_t xTasksWaitingToReceive;	/*< List of tasks that are blocked waiting to read from this queue.  Stored in priority order. */
 
+	//队列中当前队列项数量,也就是消息数
 	volatile UBaseType_t uxMessagesWaiting;/*< The number of items currently in the queue. */
+	//创建队列时指定的队列长度,也就是队列中最大允许的队列项(消息)数量
 	UBaseType_t uxLength;			/*< The length of the queue defined as the number of items it will hold, not the number of bytes. */
+	//创建队列时指定的每个队列项(消息)最大长度,单位字节
 	UBaseType_t uxItemSize;			/*< The size of each items that the queue will hold. */
 
+	//当队列上锁以后用来统计从队列中接收到的队列项数量,也就是出队的队列项数量,当队列没有上锁的话此字段为 queueUNLOCKED
 	volatile int8_t cRxLock;		/*< Stores the number of items received from the queue (removed from the queue) while the queue was locked.  Set to queueUNLOCKED when the queue is not locked. */
+	//当队列上锁以后用来统计发送到队列中的队列项数量,也就是入队的队列项数量,当队列没有上锁的话此字段为 queueUNLOCKED
 	volatile int8_t cTxLock;		/*< Stores the number of items transmitted to the queue (added to the queue) while the queue was locked.  Set to queueUNLOCKED when the queue is not locked. */
 
+	//如果使用静态存储的话此字段设置为 pdTURE。
 	#if( ( configSUPPORT_STATIC_ALLOCATION == 1 ) && ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) )
 		uint8_t ucStaticallyAllocated;	/*< Set to pdTRUE if the memory used by the queue was statically allocated to ensure no attempt is made to free the memory. */
 	#endif
 
+	//队列集相关宏
 	#if ( configUSE_QUEUE_SETS == 1 )
 		struct QueueDefinition *pxQueueSetContainer;
 	#endif
 
+	//跟踪调试相关宏
 	#if ( configUSE_TRACE_FACILITY == 1 )
 		UBaseType_t uxQueueNumber;
 		uint8_t ucQueueType;
