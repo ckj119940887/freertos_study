@@ -643,6 +643,8 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 		this is the only condition we are interested in it does not matter if
 		pxMutexHolder is accessed simultaneously by another task.  Therefore no
 		mutual exclusion is required to test the pxMutexHolder variable. */
+		//哪个任务获取到的递归互斥信号量,哪个任务就释放!要释放递归互斥信号量的任务
+		//肯定是当前正在运行的任务。检查这个任务是不是递归互斥信号量的拥有者,如果不是的话就不能完成释放。
 		if( pxMutex->pxMutexHolder == ( void * ) xTaskGetCurrentTaskHandle() ) /*lint !e961 Not a redundant cast as TaskHandle_t is a typedef. */
 		{
 			traceGIVE_MUTEX_RECURSIVE( pxMutex );
@@ -652,13 +654,20 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 			uxRecursiveCallCount is only modified by the mutex holder, and as
 			there can only be one, no mutual exclusion is required to modify the
 			uxRecursiveCallCount member. */
+			//uxRecursiveCallCount 减一, uxRecursiveCallCount 用来记录递归信号量被获取的次数。
+			//由于递归互斥信号量可以被一个任务多次获取,因此在释放的时候也要多次释放,但是只有在
+			//最后一次释放的时候才会调用函数 xQueueGenericSend()完成释放过程,其他的时候只是简单的
+			//将 uxRecursiveCallCount 减一即可。
 			( pxMutex->u.uxRecursiveCallCount )--;
 
 			/* Has the recursive call count unwound to 0? */
+			//当 uxRecursiveCallCount 为 0 的时候说明是最后一次释放了
 			if( pxMutex->u.uxRecursiveCallCount == ( UBaseType_t ) 0 )
 			{
 				/* Return the mutex.  This will automatically unblock any other
 				task that might be waiting to access the mutex. */
+				//如果是最后一次释放的话就调用函数 xQueueGenericSend()完成真正的释放过程。阻塞
+				//时间是 queueMUTEX_GIVE_BLOCK_TIME,宏 queueMUTEX_GIVE_BLOCK_TIME 为 0。
 				( void ) xQueueGenericSend( pxMutex, NULL, queueMUTEX_GIVE_BLOCK_TIME, queueSEND_TO_BACK );
 			}
 			else
@@ -666,12 +675,14 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 				mtCOVERAGE_TEST_MARKER();
 			}
 
+			//递归互斥信号量释放成功,返回 pdPASS
 			xReturn = pdPASS;
 		}
 		else
 		{
 			/* The mutex cannot be given because the calling task is not the
 			holder. */
+			//递归互斥信号量释放未成功,返回 pdFAIL
 			xReturn = pdFAIL;
 
 			traceGIVE_MUTEX_RECURSIVE_FAILED( pxMutex );
@@ -684,7 +695,7 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 /*-----------------------------------------------------------*/
 
 #if ( configUSE_RECURSIVE_MUTEXES == 1 )
-
+//第一个参数是要获取的递归互斥信号量句柄,第二个参数是阻塞时间
 	BaseType_t xQueueTakeMutexRecursive( QueueHandle_t xMutex, TickType_t xTicksToWait )
 	{
 	BaseType_t xReturn;
@@ -697,13 +708,18 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 
 		traceTAKE_MUTEX_RECURSIVE( pxMutex );
 
+		//判断当前要获取递归互斥信号量的任务是不是已经是递归互斥信号量的拥有者。通过
+		//这一步就可以判断出当前任务是第一次获取递归互斥信号量还是重复获取。
 		if( pxMutex->pxMutexHolder == ( void * ) xTaskGetCurrentTaskHandle() ) /*lint !e961 Cast is not redundant as TaskHandle_t is a typedef. */
 		{
+			//如果当前任务已经是递归互斥信号量的拥有者,那就说明任务已经获取了递归互斥信
+			//号量,本次是重复获取递归互斥信号量,那么就简单的将 uxRecursiveCallCount 加一,然后返回pdPASS 表示获取成功。
 			( pxMutex->u.uxRecursiveCallCount )++;
 			xReturn = pdPASS;
 		}
 		else
 		{
+			//如果任务是第一次获取递归互斥信号量的话就需要调用函数 xQueueGenericReceive()完成真正的获取过程。
 			xReturn = xQueueGenericReceive( pxMutex, NULL, xTicksToWait, pdFALSE );
 
 			/* pdPASS will only be returned if the mutex was successfully
@@ -711,6 +727,7 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 			before reaching here. */
 			if( xReturn != pdFAIL )
 			{
+				//第一次获取递归互斥信号量成功以后将 uxRecursiveCallCount 加一
 				( pxMutex->u.uxRecursiveCallCount )++;
 			}
 			else
@@ -1396,27 +1413,35 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 
 			/* Is there data in the queue now?  To be running the calling task
 			must be the highest priority task wanting to access the queue. */
+			//判断队列是否有消息，队列不为空,可以从队列中提取数据
 			if( uxMessagesWaiting > ( UBaseType_t ) 0 )
 			{
 				/* Remember the read position in case the queue is only being
 				peeked. */
 				pcOriginalReadPosition = pxQueue->u.pcReadFrom;
-
+				//调用函数 prvCopyDataFromQueue()使用数据拷贝的方式从队列中提取数据
 				prvCopyDataFromQueue( pxQueue, pvBuffer );
 
+				//出队的时候需要删除消息。
 				if( xJustPeeking == pdFALSE )
 				{
 					traceQUEUE_RECEIVE( pxQueue );
 
 					/* Actually removing data, not just peeking. */
+					//移除消息
 					pxQueue->uxMessagesWaiting = uxMessagesWaiting - 1;
 
+					//用于获取互斥信号量
 					#if ( configUSE_MUTEXES == 1 )
 					{
 						if( pxQueue->uxQueueType == queueQUEUE_IS_MUTEX )
 						{
 							/* Record the information required to implement
 							priority inheritance should it become necessary. */
+							//获取互斥信号量成功,需要标记互斥信号量的所有者,也就是给 pxMutexHolder 赋值,
+							//pxMutexHolder 应该是当前任务的任务控制块。但是这里是通过函数
+							//pvTaskIncrementMutexHeldCount()来赋值的,此函数很简单,只是将任务控制块中的成员变量
+							//uxMutexesHeld 加一,表示任务获取到了一个互斥信号量,最后此函数返回当前任务的任务控制块。
 							pxQueue->pxMutexHolder = ( int8_t * ) pvTaskIncrementMutexHeldCount(); /*lint !e961 Cast is not redundant as TaskHandle_t is a typedef. */
 						}
 						else
@@ -1426,10 +1451,12 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 					}
 					#endif /* configUSE_MUTEXES */
 
+					//出队成功以后判断是否有任务因为入队而阻塞的,如果有的话就需要解除任务的阻塞态,如果解除阻塞的任务优先级比当前任务的优先级高还需要进行一次任务切换。
 					if( listLIST_IS_EMPTY( &( pxQueue->xTasksWaitingToSend ) ) == pdFALSE )
 					{
 						if( xTaskRemoveFromEventList( &( pxQueue->xTasksWaitingToSend ) ) != pdFALSE )
 						{
+							//如果解除阻塞的任务优先级比当前任务优先级高的话就需要进行一次任务切换
 							queueYIELD_IF_USING_PREEMPTION();
 						}
 						else
@@ -1442,16 +1469,21 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 						mtCOVERAGE_TEST_MARKER();
 					}
 				}
+				//出队的时候不需要删除消息
 				else
 				{
 					traceQUEUE_PEEK( pxQueue );
 
 					/* The data is not being removed, so reset the read
 					pointer. */
+					//读取队列中的消息以后需要删除消息
 					pxQueue->u.pcReadFrom = pcOriginalReadPosition;
 
 					/* The data is being left in the queue, so see if there are
 					any other tasks waiting for the data. */
+					//如果出队的时候不需要删除消息的话那就相当于刚刚出队的那条消息接着有效!既然
+					//还有有效的消息存在队列中,那么就判断是否有任务因为出队而阻塞,如果有的话就解除任务
+					//的阻塞态。同样的,如果解除阻塞的任务优先级比当前任务的优先级高的话还需要进行一次任务切换。
 					if( listLIST_IS_EMPTY( &( pxQueue->xTasksWaitingToReceive ) ) == pdFALSE )
 					{
 						if( xTaskRemoveFromEventList( &( pxQueue->xTasksWaitingToReceive ) ) != pdFALSE )
@@ -1473,8 +1505,12 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				taskEXIT_CRITICAL();
 				return pdPASS;
 			}
+			//队列为空
+			//处理过程和队列的任务级通用入队函数 xQueueGenericSend()类似。如果阻塞时间为 0 的话就就直接返回
+			//errQUEUE_EMPTY,表示队列空,如果设置了阻塞时间的话就进行相关的处理。
 			else
 			{
+				//队列为空,如果阻塞时间为 0 的话就直接返回 errQUEUE_EMPTY
 				if( xTicksToWait == ( TickType_t ) 0 )
 				{
 					/* The queue was empty and no block time is specified (or
@@ -1483,6 +1519,7 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 					traceQUEUE_RECEIVE_FAILED( pxQueue );
 					return errQUEUE_EMPTY;
 				}
+				//队列为空并且设置了阻塞时间,需要初始化时间状态结构体
 				else if( xEntryTimeSet == pdFALSE )
 				{
 					/* The queue was empty and a block time was specified so
@@ -1506,18 +1543,27 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 		prvLockQueue( pxQueue );
 
 		/* Update the timeout state to see if it has expired yet. */
+		//更新时间状态结构体,并且检查超时是否发生
+		//如果没有的话就需要将任务添加到队列的 xTasksWaitingToReceive列表中
 		if( xTaskCheckForTimeOut( &xTimeOut, &xTicksToWait ) == pdFALSE )
 		{
+			//检查队列是否继续为空?如果不为空的话就会在重试一次出队
 			if( prvIsQueueEmpty( pxQueue ) != pdFALSE )
 			{
 				traceBLOCKING_ON_QUEUE_RECEIVE( pxQueue );
 
+				//用于获取互斥信号量
 				#if ( configUSE_MUTEXES == 1 )
 				{
 					if( pxQueue->uxQueueType == queueQUEUE_IS_MUTEX )
 					{
 						taskENTER_CRITICAL();
 						{
+							//调用函数 vTaskPriorityInherit()处理互斥信号量中的优先级继承问题,如果函数
+							//xQueueGenericReceive()用于获取互斥信号量的话,此函数执行到这里说明互斥信号量正在被其
+							//他的任务占用。此函数和 xTaskPriorityDisinherit()过程相反。此函数会判断
+							//当前任务的任务优先级是否比正在拥有互斥信号量的那个任务的任务优先级高,如果是的话就
+							//会把拥有互斥信号量的那个低优先级任务的优先级调整为与当前任务相同的优先级!
 							vTaskPriorityInherit( ( void * ) pxQueue->pxMutexHolder );
 						}
 						taskEXIT_CRITICAL();
@@ -1529,6 +1575,7 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				}
 				#endif
 
+				//队列依旧为空,那么就将任务添加到列表 xTasksWaitingToReceive中。
 				vTaskPlaceOnEventList( &( pxQueue->xTasksWaitingToReceive ), xTicksToWait );
 				prvUnlockQueue( pxQueue );
 				if( xTaskResumeAll() == pdFALSE )

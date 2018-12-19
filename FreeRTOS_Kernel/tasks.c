@@ -3922,6 +3922,7 @@ TCB_t *pxTCB;
 #endif /* configUSE_MUTEXES */
 /*-----------------------------------------------------------*/
 
+//本函数是针对释放互斥量的任务(任务的优先级已经继承了高优先级的任务)的，当前是准备释放互斥量，从而将任务的优先级恢复成原来的优先级
 #if ( configUSE_MUTEXES == 1 )
 
 	BaseType_t xTaskPriorityDisinherit( TaskHandle_t const pxMutexHolder )
@@ -3929,22 +3930,32 @@ TCB_t *pxTCB;
 	TCB_t * const pxTCB = ( TCB_t * ) pxMutexHolder;
 	BaseType_t xReturn = pdFALSE;
 
+		//函数的参数 pxMutexHolder 表示拥有此互斥信号量任务控制块,所以要先判断此互斥信号量是否已经被其他任务获取。
 		if( pxMutexHolder != NULL )
 		{
 			/* A task can only have an inherited priority if it holds the mutex.
 			If the mutex is held by a task then it cannot be given from an
 			interrupt, and if a mutex is given by the holding task then it must
 			be the running state task. */
+			//当一个任务获取到互斥信号量以后就会涉及到优先级继承的问题,正在释放互斥
+			//信号量的任务肯定是当前正在运行的任务 pxCurrentTCB。
 			configASSERT( pxTCB == pxCurrentTCB );
 
 			configASSERT( pxTCB->uxMutexesHeld );
+
+			//有的任务可能会获取多个互斥信号量,所以就需要标记任务当前获取到的互斥信号量
+			//个数,任务控制块结构体的成员变量 uxMutexesHeld 用来保存当前任务获取到的互斥信号量个
+			//数。任务每释放一次互斥信号量,变量 uxMutexesHeld 肯定就要减一。
 			( pxTCB->uxMutexesHeld )--;
 
 			/* Has the holder of the mutex inherited the priority of another
 			task? */
+			//判断是否存在优先级继承,如果存在的话任务的当前优先级肯定不等于任务的基优先级。
 			if( pxTCB->uxPriority != pxTCB->uxBasePriority )
 			{
 				/* Only disinherit if no other mutexes are held. */
+				//判断当前释放的是不是任务所获取到的最后一个互斥信号量,因为如果任务还获取了
+				//其他互斥信号量的话就不能处理优先级继承。优先级继承的处理必须是在释放最后一个互斥信号量的时候。
 				if( pxTCB->uxMutexesHeld == ( UBaseType_t ) 0 )
 				{
 					/* A task can only have an inherited priority if it holds
@@ -3952,8 +3963,11 @@ TCB_t *pxTCB;
 					given from an interrupt, and if a mutex is given by the
 					holding	task then it must be the running state task.  Remove
 					the	holding task from the ready	list. */
+					//优先级继承的处理说白了就是将任务的当前优先级降低到任务的基优先级,所以要把
+					//当前任务先从任务就绪表中移除。当任务优先级恢复为原来的优先级以后再重新加入到就绪表中。
 					if( uxListRemove( &( pxTCB->xStateListItem ) ) == ( UBaseType_t ) 0 )
 					{
+						//如果任务继承来的这个优先级对应的就绪表中没有其他任务的话就将取消这个优先级的就绪态。
 						taskRESET_READY_PRIORITY( pxTCB->uxPriority );
 					}
 					else
@@ -3963,13 +3977,16 @@ TCB_t *pxTCB;
 
 					/* Disinherit the priority before adding the task into the
 					new	ready list. */
+					//重新设置任务的优先级为任务的基优先级 uxBasePriority
 					traceTASK_PRIORITY_DISINHERIT( pxTCB, pxTCB->uxBasePriority );
 					pxTCB->uxPriority = pxTCB->uxBasePriority;
 
 					/* Reset the event list item value.  It cannot be in use for
 					any other purpose if this task is running, and it must be
 					running to give back the mutex. */
+					//复位任务的事件列表项
 					listSET_LIST_ITEM_VALUE( &( pxTCB->xEventListItem ), ( TickType_t ) configMAX_PRIORITIES - ( TickType_t ) pxTCB->uxPriority ); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
+					//将优先级恢复后的任务重新添加到任务就绪表中
 					prvAddTaskToReadyList( pxTCB );
 
 					/* Return true to indicate that a context switch is required.
@@ -3980,6 +3997,7 @@ TCB_t *pxTCB;
 					returned, even if a task was waiting on it, then a context
 					switch should occur when the last mutex is returned whether
 					a task is waiting on it or not. */
+					//返回 pdTRUE,表示需要进行任务调度
 					xReturn = pdTRUE;
 				}
 				else
