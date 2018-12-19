@@ -132,6 +132,9 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup vSemaphoreCreateBinary vSemaphoreCreateBinary
  * \ingroup Semaphores
  */
+//所以创建二值信号量就是创建队列的过程。这里使用函数 xQueueGenericCreate()创建了一个队列,队列长度为 1,队列项长度为 0,
+//队列类型为 queueQUEUE_TYPE_BINARY_SEMAPHORE,也就是二值信号量。
+//当二值信号量创建成功以后立即调用函数 xSemaphoreGive()释放二值信号量,此时新创建的二值信号量有效。
 #if( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
 	#define vSemaphoreCreateBinary( xSemaphore )																							\
 		{																																	\
@@ -200,6 +203,9 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreCreateBinary xSemaphoreCreateBinary
  * \ingroup Semaphores
  */
+//此函数创建好的二值信号量默认是空的,也就是说刚创建好的二值信号量使用函 数 xSemaphoreTake()是获 取不到的
+//与老版本不同的是，创建好信号量后，不会立即释放信号量
+//注意创建的队列师哥没有存储区的队列，使用队列是否为空来表示二值信号量，而队列是否为空可以通过uxMessagesWaiting来判断
 #if( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
 	#define xSemaphoreCreateBinary() xQueueGenericCreate( ( UBaseType_t ) 1, semSEMAPHORE_QUEUE_ITEM_LENGTH, queueQUEUE_TYPE_BINARY_SEMAPHORE )
 #endif
@@ -328,6 +334,10 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreTake xSemaphoreTake
  * \ingroup Semaphores
  */
+//此函数用于获取二值信号量、计数型信号量或互斥信号量
+//如果队列为空并且阻塞时间为 0 的话就立即返回 errQUEUE_EMPTY,表示队列满。如果队列为空并且阻塞时间不为 0 的话就将任务
+//添加到延时列表中。如果队列不为空的话就从队列中读取数据(获取信号量不执行这一步),数据读取完成以后还需要将队列结构体成员变量 uxMessagesWaiting 减一,然后解除某些因为入
+//队而阻塞的任务,最后返回 pdPASS 表示出对成功。互斥信号量涉及到优先级继承,处理方式不同
 #define xSemaphoreTake( xSemaphore, xBlockTime )		xQueueGenericReceive( ( QueueHandle_t ) ( xSemaphore ), NULL, ( xBlockTime ), pdFALSE )
 
 /**
@@ -486,6 +496,11 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreGive xSemaphoreGive
  * \ingroup Semaphores
  */
+//任务级释放信号量就是向队列发送消息的过程,只是这里并没有发送具体的消息,
+//阻塞时间为 0(宏 semGIVE_BLOCK_TIME 为 0),入队方式采用的后向入队。
+//入队的时候队列结构体成员变量 uxMessagesWaiting 会加一,对于二
+//值信号量通过判断 uxMessagesWaiting 就可以知道信号量是否有效了,当 uxMessagesWaiting 为
+//1 的话说明二值信号量有效,为 0 就无效。如果队列满的话就返回错误值 errQUEUE_FULL,提示队列满,入队失败。
 #define xSemaphoreGive( xSemaphore )		xQueueGenericSend( ( QueueHandle_t ) ( xSemaphore ), NULL, semGIVE_BLOCK_TIME, queueSEND_TO_BACK )
 
 /**
@@ -663,6 +678,11 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreGiveFromISR xSemaphoreGiveFromISR
  * \ingroup Semaphores
  */
+//此函数只能用来释放二值信号量和计数型信号量,绝对不能用来在中断服务函数中释放互斥信号量
+//因为互斥信号量涉及到优先级继承的问题,而中断不属于任务,没法处理中断优先级继承。
+//pxHigherPriorityTaskWoken:标记退出此函数以后是否进行任务切换,这个变量的值由这
+//三个函数来设置的,用户不用进行设置,用户只需要提供一个变量来保存这个值就行了。当此值为 pdTRUE 的时候在退
+//出中断服务函数之前一定要进行一次任务切换。
 #define xSemaphoreGiveFromISR( xSemaphore, pxHigherPriorityTaskWoken )	xQueueGiveFromISR( ( QueueHandle_t ) ( xSemaphore ), ( pxHigherPriorityTaskWoken ) )
 
 /**
@@ -697,6 +717,13 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * @return pdTRUE if the semaphore was successfully taken, otherwise
  * pdFALSE
  */
+//此函数用于在中断服务函数中获取信号量,此函数用于获取二值信号量和计数型信号量,绝对不能使用此函数来获取互斥信号量
+//pxHigherPriorityTaskWoken:标记退出此函数以后是否进行任务切换,这个变量的值由这
+//三个函数来设置的,用户不用进行设置,用户只需要提供一个变量来保存这个值就行了。当此值为 pdTRUE 的时候在退
+//出中断服务函数之前一定要进行一次任务切换。
+
+//当队列不为空的时候就拷贝队列中的数据(用于信号量的时候不需要这一步),然后将队列结构体中的成员变量 uxMessagesWaiting 减一,如果有任务因为入队而阻塞的话就解除
+//阻塞态,当解除阻塞的任务拥有更高优先级的话就将参数 pxHigherPriorityTaskWoken 设置为pdTRUE,最后返回 pdPASS 表示出队成功。如果队列为空的话就直接返回 pdFAIL 表示出队失败!
 #define xSemaphoreTakeFromISR( xSemaphore, pxHigherPriorityTaskWoken )	xQueueReceiveFromISR( ( QueueHandle_t ) ( xSemaphore ), NULL, ( pxHigherPriorityTaskWoken ) )
 
 /**
@@ -1036,6 +1063,7 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreCreateCounting xSemaphoreCreateCounting
  * \ingroup Semaphores
  */
+//动态创建计数型信号量
 #if( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
 	#define xSemaphoreCreateCounting( uxMaxCount, uxInitialCount ) xQueueCreateCountingSemaphore( ( uxMaxCount ), ( uxInitialCount ) )
 #endif

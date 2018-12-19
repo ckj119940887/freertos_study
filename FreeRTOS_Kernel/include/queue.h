@@ -182,6 +182,9 @@ typedef void * QueueSetMemberHandle_t;
  * \defgroup xQueueCreate xQueueCreate
  * \ingroup QueueManagement
  */
+//uxQueueLength: 要创建的队列的队列长度,这里是队列的项目数。
+//uxItemSize:队列中每个项目(消息)的长度,单位为字节
+//返回值:NULL(队列创建失败),队列创捷成功以后返回的队列句柄!
 #if( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
 	#define xQueueCreate( uxQueueLength, uxItemSize ) xQueueGenericCreate( ( uxQueueLength ), ( uxItemSize ), ( queueQUEUE_TYPE_BASE ) )
 #endif
@@ -268,6 +271,10 @@ typedef void * QueueSetMemberHandle_t;
  * \defgroup xQueueCreateStatic xQueueCreateStatic
  * \ingroup QueueManagement
  */
+//uxQueueLength:要创建的队列的队列长度,这里是队列的项目数。
+//uxItemSize:队列中每个项目(消息)的长度,单位为字节
+//pucQueueStorage:指向队列项目的存储区,也就是消息的存储区,这个存储区需要用户自行分配。此参数必须指向一个 uint8_t 类型的数组。这个存储区要大于等于(uxQueueLength * uxItemsSize)字节。
+//pxQueueBuffer:此参数指向一个 StaticQueue_t 类型的变量,用来保存队列结构体。
 #if( configSUPPORT_STATIC_ALLOCATION == 1 )
 	#define xQueueCreateStatic( uxQueueLength, uxItemSize, pucQueueStorage, pxQueueBuffer ) xQueueGenericCreateStatic( ( uxQueueLength ), ( uxItemSize ), ( pucQueueStorage ), ( pxQueueBuffer ), ( queueQUEUE_TYPE_BASE ) )
 #endif /* configSUPPORT_STATIC_ALLOCATION */

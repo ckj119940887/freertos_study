@@ -276,6 +276,8 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
  * Macro to mark a queue as locked.  Locking a queue prevents an ISR from
  * accessing the queue event lists.
  */
+//队列上锁函数
+//将队列中的成员变量 cRxLock 和 cTxLock 设置为queueLOCKED_UNMODIFIED 就行了。
 #define prvLockQueue( pxQueue )								\
 	taskENTER_CRITICAL();									\
 	{														\
@@ -313,6 +315,9 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 			will still be empty.  If there are tasks blocked waiting to write to
 			the queue, then one should be unblocked as after this function exits
 			it will be possible to write to it. */
+			//由于复位队列以后队列依旧是空的,所以对于那些由于出队(从队列中读取消
+			//息)而阻塞的任务就依旧保持阻塞壮态。但是对于那些由于入队(向队列中发送
+			//消息)而阻塞的任务就不同了,这些任务要解除阻塞壮态,从队列的相应列表中移除。
 			if( listLIST_IS_EMPTY( &( pxQueue->xTasksWaitingToSend ) ) == pdFALSE )
 			{
 				if( xTaskRemoveFromEventList( &( pxQueue->xTasksWaitingToSend ) ) != pdFALSE )
@@ -396,6 +401,15 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 #endif /* configSUPPORT_STATIC_ALLOCATION */
 /*-----------------------------------------------------------*/
 
+//ucQueueType: 队列类型,由于 FreeRTOS 中的信号量等也是通过队列来实现的,创建信号
+//量的函数最终也是使用此函数的,因此在创建的时候需要指定此队列的用途,也就是队列类型,一共有六种类型:
+//queueQUEUE_TYPE_BASE:普通的消息队列
+//queueQUEUE_TYPE_SET:队列集
+//queueQUEUE_TYPE_MUTEX:互斥信号量
+//queueQUEUE_TYPE_COUNTING_SEMAPHORE:计数型信号量
+//queueQUEUE_TYPE_BINARY_SEMAPHORE:二值信号量
+//queueQUEUE_TYPE_RECURSIVE_MUTEX:递归互斥信号量
+//函数xQueueCreate()创建队列的时候此参数默认选择的就是queueQUEUE_TYPE_BASE。
 #if( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
 
 	QueueHandle_t xQueueGenericCreate( const UBaseType_t uxQueueLength, const UBaseType_t uxItemSize, const uint8_t ucQueueType )
@@ -409,21 +423,25 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 		if( uxItemSize == ( UBaseType_t ) 0 )
 		{
 			/* There is not going to be a queue storage area. */
+			////队列项大小为 0,那么就不需要存储区。
 			xQueueSizeInBytes = ( size_t ) 0;
 		}
 		else
 		{
 			/* Allocate enough space to hold the maximum number of items that
 			can be in the queue at any time. */
+			//分配足够的存储区,确保随时随地都可以保存所有的项目(消息)
 			xQueueSizeInBytes = ( size_t ) ( uxQueueLength * uxItemSize ); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
 		}
 
+		//申请的内存大小是队列结构体和队列中消息存储区的总大小
 		pxNewQueue = ( Queue_t * ) pvPortMalloc( sizeof( Queue_t ) + xQueueSizeInBytes );
 
 		if( pxNewQueue != NULL )
 		{
 			/* Jump past the queue structure to find the location of the queue
 			storage area. */
+			//申请到的内存是队列结构体和队列中消存储区的总大小,队列结构体内存在前,紧跟在后面的就是消息存储区内存
 			pucQueueStorage = ( ( uint8_t * ) pxNewQueue ) + sizeof( Queue_t );
 
 			#if( configSUPPORT_STATIC_ALLOCATION == 1 )
@@ -431,10 +449,12 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				/* Queues can be created either statically or dynamically, so
 				note this task was created dynamically in case it is later
 				deleted. */
+				//队列是使用动态方法创建的,所以队列字段 ucStaticallyAllocated 标记为 pdFALSE。
 				pxNewQueue->ucStaticallyAllocated = pdFALSE;
 			}
 			#endif /* configSUPPORT_STATIC_ALLOCATION */
 
+			//初始化队列
 			prvInitialiseNewQueue( uxQueueLength, uxItemSize, pucQueueStorage, ucQueueType, pxNewQueue );
 		}
 
@@ -444,6 +464,11 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 #endif /* configSUPPORT_STATIC_ALLOCATION */
 /*-----------------------------------------------------------*/
 
+//uxQueueLength 	队列长度
+//uxItemSize		队列项目长度
+//pucQueueStorage 	队列项目存储区
+//ucQueueType		队列类型
+//pxNewQueue 		队列结构体
 static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseType_t uxItemSize, uint8_t *pucQueueStorage, const uint8_t ucQueueType, Queue_t *pxNewQueue )
 {
 	/* Remove compiler warnings about unused parameters should
@@ -456,11 +481,13 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 		be set to NULL because NULL is used as a key to say the queue is used as
 		a mutex.  Therefore just set pcHead to point to the queue as a benign
 		value that is known to be within the memory map. */
+		//队列项(消息)长度为 0,说明没有队列存储区,这里将 pcHead 指向队列开始地址(结构体)
 		pxNewQueue->pcHead = ( int8_t * ) pxNewQueue;
 	}
 	else
 	{
 		/* Set the head to the start of the queue storage area. */
+		//设置 pcHead 指向队列项存储区首地址
 		pxNewQueue->pcHead = ( int8_t * ) pucQueueStorage;
 	}
 
@@ -468,16 +495,19 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 	defined. */
 	pxNewQueue->uxLength = uxQueueLength;
 	pxNewQueue->uxItemSize = uxItemSize;
+	//复位队列
 	( void ) xQueueGenericReset( pxNewQueue, pdTRUE );
 
 	#if ( configUSE_TRACE_FACILITY == 1 )
 	{
+		//跟踪调试相关字段初始化
 		pxNewQueue->ucQueueType = ucQueueType;
 	}
 	#endif /* configUSE_TRACE_FACILITY */
 
 	#if( configUSE_QUEUE_SETS == 1 )
 	{
+		//队列集相关字段初始化
 		pxNewQueue->pxQueueSetContainer = NULL;
 	}
 	#endif /* configUSE_QUEUE_SETS */
@@ -490,21 +520,34 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 
 	static void prvInitialiseMutex( Queue_t *pxNewQueue )
 	{
+		//虽然创建队列的时候会初始化队列结构体的成员变量,但是此时创建的是互斥
+		//信号量,因此有些成员变量需要重新赋值,尤其是那些用于优先级继承的。
 		if( pxNewQueue != NULL )
 		{
 			/* The queue create function will set all the queue structure members
 			correctly for a generic queue, but this function is creating a
 			mutex.  Overwrite those members that need to be set differently -
 			in particular the information required for priority inheritance. */
+			//队列结构体 Queue_t 中没有 pxMutexHolder 和 uxQueueType这两个成员变量,这两个其实是宏,专门为互斥信号量准备的,
+			//在文件 queue.c 中有如下定义:	
+			//#define pxMutexHolder 		pcTail
+			//#define uxQueueType 			pcHead
+			//#define queueQUEUE_IS_MUTEX 	NULL
+			//当 Queue_t 用于表示队列的时候 pcHead 和 pcTail 指向队列的存储区域,当 Queue_t 用于表
+			//示互斥信号量的时候就不需要 pcHead 和 pcTail 了。当用于互斥信号量的时候将 pcHead 指向
+			//NULL 来表示 pcTail 保存着互斥队列的所有者,pxMutexHolder 指向拥有互斥信号量的那个任
+			//务的任务控制块。重命名 pcTail 和 pcHead 就是为了增强代码的可读性。
 			pxNewQueue->pxMutexHolder = NULL;
 			pxNewQueue->uxQueueType = queueQUEUE_IS_MUTEX;
 
 			/* In case this is a recursive mutex. */
+			//如果是递归互斥信号量的话
 			pxNewQueue->u.uxRecursiveCallCount = 0;
 
 			traceCREATE_MUTEX( pxNewQueue );
 
 			/* Start with the semaphore in the expected state. */
+			//互斥信号量创建成功以后会调用函数 xQueueGenericSend()释放一次信号量,说明互斥信号量默认就是有效的!
 			( void ) xQueueGenericSend( pxNewQueue, NULL, ( TickType_t ) 0U, queueSEND_TO_BACK );
 		}
 		else
@@ -523,7 +566,10 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 	Queue_t *pxNewQueue;
 	const UBaseType_t uxMutexLength = ( UBaseType_t ) 1, uxMutexSize = ( UBaseType_t ) 0;
 
+		//调用函数 xQueueGenericCreate()创建一个队列,队列长度为 1,队列项长度为 0,队列
+		//类型为参数 ucQueueType。由于本函数是创建互斥信号量的,所以参数 ucQueueType 为queueQUEUE_TYPE_MUTEX。
 		pxNewQueue = ( Queue_t * ) xQueueGenericCreate( uxMutexLength, uxMutexSize, ucQueueType );
+		//初始化互斥信号量
 		prvInitialiseMutex( pxNewQueue );
 
 		return pxNewQueue;
@@ -716,10 +762,14 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 		configASSERT( uxMaxCount != 0 );
 		configASSERT( uxInitialCount <= uxMaxCount );
 
+		//创建一个队列,队列长度为uxMaxCount,对列项长度为queueSEMAPHORE_QUEUE_ITEM_LENGTH(此宏为0),队列的类型为
+		//queueQUEUE_TYPE_COUNTING_SEMAPHORE,表示是个计数型信号量。
 		xHandle = xQueueGenericCreate( uxMaxCount, queueSEMAPHORE_QUEUE_ITEM_LENGTH, queueQUEUE_TYPE_COUNTING_SEMAPHORE );
 
 		if( xHandle != NULL )
 		{
+			//队列结构体的成员变量 uxMessagesWaiting 用于计数型信号量的计数,根据计数型信
+			//号量的初始值来设置 uxMessagesWaiting。
 			( ( Queue_t * ) xHandle )->uxMessagesWaiting = uxInitialCount;
 
 			traceCREATE_COUNTING_SEMAPHORE();
@@ -735,6 +785,16 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 #endif /* ( ( configUSE_COUNTING_SEMAPHORES == 1 ) && ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) ) */
 /*-----------------------------------------------------------*/
 
+//xQueue:队列句柄,指明要向哪个队列发送数据,创建队列成功以后会返回此队列的队列句柄。
+//pvItemToQueue:指向要发送的消息,发送的过程中会将这个消息拷贝到队列中。
+//xTicksToWait: 阻塞时间。
+//xCopyPosition: 入队方式,有三种入队方式:
+	//queueSEND_TO_BACK:后向入队
+	//queueSEND_TO_FRONT:前向入队
+	//queueOVERWRITE:覆写入队。
+//返回值:
+	//pdTRUE:向队列发送消息成功!
+	//errQUEUE_FULL:队列已经满了,消息发送失败。
 BaseType_t xQueueGenericSend( QueueHandle_t xQueue, const void * const pvItemToQueue, TickType_t xTicksToWait, const BaseType_t xCopyPosition )
 {
 BaseType_t xEntryTimeSet = pdFALSE, xYieldRequired;
@@ -762,9 +822,19 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 			highest priority task wanting to access the queue.  If the head item
 			in the queue is to be overwritten then it does not matter if the
 			queue is full. */
+			//要向队列发送数据,肯定要先检查一下队列是不是满的,如果是满的话肯定不能发送
+			//的。当队列未满或者是覆写入队的话就可以将消息入队了。
 			if( ( pxQueue->uxMessagesWaiting < pxQueue->uxLength ) || ( xCopyPosition == queueOVERWRITE ) )
 			{
 				traceQUEUE_SEND( pxQueue );
+				//调用函数 prvCopyDataToQueue()将消息拷贝到队列中。前面说了入队分为后向入队、
+				//前向入队和覆写入队,他们的具体实现就是在函数 prvCopyDataToQueue()中完成的。如果选择
+				//后向入队 queueSEND_TO_BACK 的话就将消息拷贝到队列结构体成员 pcWriteTo 所指向的队
+				//列项,拷贝成功以后 pcWriteTo 增加 uxItemSize 个字节,指向下一个队列项目。当选择前向入
+				//队 queueSEND_TO_FRONT 或者 queueOVERWRITE 的话就将消息拷贝到 u.pcReadFrom 所指向
+				//的队列项目,同样的需要调整 u.pcReadFrom 的位置。当向队列写入一个消息以后队列中统计当
+				//前消息数量的成员 uxMessagesWaiting 就会加一,但是选择覆写入队 queueOVERWRITE 的话还
+				//会将 uxMessagesWaiting 减一,这样一减一加相当于队列当前消息数量没有变。
 				xYieldRequired = prvCopyDataToQueue( pxQueue, pvItemToQueue, xCopyPosition );
 
 				#if ( configUSE_QUEUE_SETS == 1 )
@@ -820,8 +890,13 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				{
 					/* If there was a task waiting for data to arrive on the
 					queue then unblock it now. */
+					//检查是否有任务由于请求队列消息而阻塞,阻塞的任务会挂在队列的xTasksWaitingToReceive 列表上。
 					if( listLIST_IS_EMPTY( &( pxQueue->xTasksWaitingToReceive ) ) == pdFALSE )
 					{
+						//xTaskRemoveFromEventList()将阻塞的任务从列表 xTasksWaitingToReceive 上移除,并且把
+						//这个任务添加到就绪列表中,如果调度器上锁的话这些任务就会挂到列表 xPendingReadyList 上。
+						//如果取消阻塞的任务优先级比当前正在运行的任务优先级高还要标记需要进行任务切换。当函
+						//数 xTaskRemoveFromEventList()返回值为 pdTRUE 的话就需要进行任务切换。
 						if( xTaskRemoveFromEventList( &( pxQueue->xTasksWaitingToReceive ) ) != pdFALSE )
 						{
 							/* The unblocked task has a priority higher than
@@ -851,10 +926,13 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				#endif /* configUSE_QUEUE_SETS */
 
 				taskEXIT_CRITICAL();
+				//返回 pdPASS,标记入队成功。
 				return pdPASS;
 			}
 			else
 			{
+				//非常理想的效果,即消息队列未满,入队没有任何障碍。但是队列满了以
+				//后呢?首先判断设置的阻塞时间是否为 0,如果为 0 的话就说明没有阻塞时间。
 				if( xTicksToWait == ( TickType_t ) 0 )
 				{
 					/* The queue was full and no block time is specified (or
@@ -864,12 +942,17 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 					/* Return to the original privilege level before exiting
 					the function. */
 					traceQUEUE_SEND_FAILED( pxQueue );
+					//队列是满的，如果没有设置阻塞时间
+					//那就直接返回 errQUEUE_FULL,标记队列已满就可以了
 					return errQUEUE_FULL;
 				}
 				else if( xEntryTimeSet == pdFALSE )
 				{
 					/* The queue was full and a block time was specified so
 					configure the timeout structure. */
+					//如果阻塞时间不为 0 并且时间结构体还没有初始化的话就初始化一次超时结构体变量,
+					//调用函数 vTaskSetTimeOutState()完成超时结构体变量 xTimeOut 的初始化。其实就是记录当前
+					//的系统时钟节拍计数器的值 xTickCount 和溢出次数 xNumOfOverflows。
 					vTaskSetTimeOutState( &xTimeOut );
 					xEntryTimeSet = pdTRUE;
 				}
@@ -884,16 +967,24 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 
 		/* Interrupts and other tasks can send to and receive from the queue
 		now the critical section has been exited. */
-
+		//任务调度器上锁,代码执行到这里说明当前的状况是队列已满了,而且设置了不为 0
+		//的阻塞时间。那么接下来就要对任务采取相应的措施了,比如将任务加入到队列的xTasksWaitingToSend 列表中。
 		vTaskSuspendAll();
+		//调用函数 prvLockQueue()给队列上锁,其实就是将队列中的成员变量 cRxLock 和 cTxLock 设置为 queueLOCKED_UNMODIFIED。
 		prvLockQueue( pxQueue );
 
 		/* Update the timeout state to see if it has expired yet. */
+		//调用函数 xTaskCheckForTimeOut()更新超时结构体变量 xTimeOut,并且检查阻塞时间是否到了。
 		if( xTaskCheckForTimeOut( &xTimeOut, &xTicksToWait ) == pdFALSE )
 		{
-			if( prvIsQueueFull( pxQueue ) != pdFALSE )
+			//阻塞时间还没到,那就检查队列是否还是满的
+			if( prvIsQueueFull( pxQueue ) != pdFALSE )	//队列是满的
 			{
 				traceBLOCKING_ON_QUEUE_SEND( pxQueue );
+				//阻塞时间没到,而且队列依旧是满的,那就调用函数
+				//vTaskPlaceOnEventList()将任务添加到队列的 xTasksWaitingToSend 列表中和延时列表中,并且
+				//将任务从就绪列表中移除。注意!如果阻塞时间是portMAX_DELAY并且宏
+				//INCLUDE_vTaskSuspend为1的话,函数vTaskPlaceOnEventList()会将任务添加到列表xSuspendedTaskList 上。
 				vTaskPlaceOnEventList( &( pxQueue->xTasksWaitingToSend ), xTicksToWait );
 
 				/* Unlocking the queue means queue events can effect the
@@ -901,6 +992,7 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				remove this task from the event	list again - but as the
 				scheduler is suspended the task will go onto the pending
 				ready last instead of the actual ready list. */
+				//操作完成,调用函数 prvUnlockQueue()解锁队列。
 				prvUnlockQueue( pxQueue );
 
 				/* Resuming the scheduler will move tasks from the pending
@@ -916,6 +1008,7 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 			else
 			{
 				/* Try again. */
+				//阻塞时间还没到,但是队列现在有空闲的队列项,那么就在重试一次
 				prvUnlockQueue( pxQueue );
 				( void ) xTaskResumeAll();
 			}
@@ -923,16 +1016,29 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 		else
 		{
 			/* The timeout has expired. */
+			//阻塞时间到了!那么任务就不用添加到那些列表中了,那就解锁队列,恢复任务调度器。
 			prvUnlockQueue( pxQueue );
 			( void ) xTaskResumeAll();
 
 			traceQUEUE_SEND_FAILED( pxQueue );
+			//返回 errQUEUE_FULL,表示队列满了
 			return errQUEUE_FULL;
 		}
 	}
 }
 /*-----------------------------------------------------------*/
 
+//xQueue:队列句柄,指明要向哪个队列发送数据,创建队列成功以后会返回此队列的队列句柄。
+//pvItemToQueue:指向要发送的消息,发送的过程中会将这个消息拷贝到队列中。
+//pxHigherPriorityTaskWoken:标记退出此函数以后是否进行任务切换,这个变量的值由这
+						  //三个函数来设置的,用户不用进行设置,用户只需要提供一
+						  //个变量来保存这个值就行了。当此值为 pdTRUE 的时候在退
+						  //出中断服务函数之前一定要进行一次任务切换。
+//xCopyPosition:入队方式,有三种入队方式:
+	//queueSEND_TO_BACK:后向入队
+	//queueSEND_TO_FRONT:前向入队
+	//queueOVERWRITE:覆写入队。
+//该函数都没有设置阻塞时间值。原因很简单,这些函数都是在中断服务函数中调用的,并不是在任务中,所以也就没有阻塞这一说了
 BaseType_t xQueueGenericSendFromISR( QueueHandle_t xQueue, const void * const pvItemToQueue, BaseType_t * const pxHigherPriorityTaskWoken, const BaseType_t xCopyPosition )
 {
 BaseType_t xReturn;
@@ -966,8 +1072,10 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 	post). */
 	uxSavedInterruptStatus = portSET_INTERRUPT_MASK_FROM_ISR();
 	{
+		//队列未满或者采用的覆写的入队方式,这是最理想的壮态。
 		if( ( pxQueue->uxMessagesWaiting < pxQueue->uxLength ) || ( xCopyPosition == queueOVERWRITE ) )
 		{
+			//读取队列的成员变量 xTxLock,用于判断队列是否上锁。
 			const int8_t cTxLock = pxQueue->cTxLock;
 
 			traceQUEUE_SEND_FROM_ISR( pxQueue );
@@ -977,10 +1085,13 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 			in a task disinheriting a priority and prvCopyDataToQueue() can be
 			called here even though the disinherit function does not check if
 			the scheduler is suspended before accessing the ready lists. */
+			//将数据拷贝到队列中。
 			( void ) prvCopyDataToQueue( pxQueue, pvItemToQueue, xCopyPosition );
 
 			/* The event list is not altered if the queue is locked.  This will
 			be done when the queue is unlocked later. */
+			//队列上锁时不能操作事件列表，队列解锁时会补上这些操作
+			//队列上锁了,比如任务级入队函数在操作队列中的列表的时候就会对队列上锁。
 			if( cTxLock == queueUNLOCKED )
 			{
 				#if ( configUSE_QUEUE_SETS == 1 )
@@ -1036,12 +1147,17 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				}
 				#else /* configUSE_QUEUE_SETS */
 				{
+					//判断队列列表 xTasksWaitingToReceive 是否为空,如果不为空的话说明有任务在请求消息的时候被阻塞了。
 					if( listLIST_IS_EMPTY( &( pxQueue->xTasksWaitingToReceive ) ) == pdFALSE )
 					{
+						//将相应的任务从列表 xTasksWaitingToReceive 上移除。跟任务级入队函数处理过程一样。
 						if( xTaskRemoveFromEventList( &( pxQueue->xTasksWaitingToReceive ) ) != pdFALSE )
 						{
 							/* The task waiting has a higher priority so record that a
 							context	switch is required. */
+							//如果刚刚从列表 xTasksWaitingToReceive 中移除的任务优先级比当前任务的优先级高,
+							//那么标记 pxHigherPriorityTaskWoken 为 pdTRUE,表示要进行任务切换。如果要进行任务切换
+							//的话就需要在退出此函数以后,退出中断服务函数之前进行一次任务切换。
 							if( pxHigherPriorityTaskWoken != NULL )
 							{
 								*pxHigherPriorityTaskWoken = pdTRUE;
@@ -1067,13 +1183,17 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 			{
 				/* Increment the lock count so the task that unlocks the queue
 				knows that data was posted while it was locked. */
+				//队列上锁期间向队列中发送了数据
+				//如果队列上锁的话那就将队列成员变量 cTxLock 加一,表示进行了一次入队操作,在队列解锁(prvUnlockQueue())的时候会对其做相应的处理。
 				pxQueue->cTxLock = ( int8_t ) ( cTxLock + 1 );
 			}
 
+			//返回 pdPASS,表示入队完成。
 			xReturn = pdPASS;
 		}
 		else
 		{
+			//如果队列满的话就直接返回 errQUEUE_FULL,表示队列满。
 			traceQUEUE_SEND_FROM_ISR_FAILED( pxQueue );
 			xReturn = errQUEUE_FULL;
 		}
@@ -1722,10 +1842,13 @@ UBaseType_t uxMessagesWaiting;
 	{
 		#if ( configUSE_MUTEXES == 1 )
 		{
+			//当前操作的是互斥信号量
 			if( pxQueue->uxQueueType == queueQUEUE_IS_MUTEX )
 			{
 				/* The mutex is no longer being held. */
+				//调用函数 xTaskPriorityDisinherit()处理互斥信号量的优先级继承问题。
 				xReturn = xTaskPriorityDisinherit( ( void * ) pxQueue->pxMutexHolder );
+				//互斥信号量释放以后,互斥信号量就不属于任何任务了,所以 pxMutexHolder 要指向NULL。
 				pxQueue->pxMutexHolder = NULL;
 			}
 			else
@@ -1806,6 +1929,8 @@ static void prvCopyDataFromQueue( Queue_t * const pxQueue, void * const pvBuffer
 }
 /*-----------------------------------------------------------*/
 
+//队列解锁函数
+//
 static void prvUnlockQueue( Queue_t * const pxQueue )
 {
 	/* THIS FUNCTION MUST BE CALLED WITH THE SCHEDULER SUSPENDED. */
@@ -1814,11 +1939,15 @@ static void prvUnlockQueue( Queue_t * const pxQueue )
 	removed from the queue while the queue was locked.  When a queue is
 	locked items can be added or removed, but the event lists cannot be
 	updated. */
+	//上锁计数器(cTxLock 和 cRxLock)记录了在队列上锁期间,入队或出队的数量,当队列
+	//上锁以后队列项是可以加入或者移除队列的,但是相应的列表不会更新。
 	taskENTER_CRITICAL();
 	{
 		int8_t cTxLock = pxQueue->cTxLock;
 
 		/* See if data was added to the queue while it was locked. */
+		//判断是否有中断向队列发送了消息
+		//如果当队列上锁的话那么向队列发送消息成功以后会将入队计数器 cTxLock 加一
 		while( cTxLock > queueLOCKED_UNMODIFIED )
 		{
 			/* Data was posted while the queue was locked.  Are any tasks
@@ -1867,12 +1996,19 @@ static void prvUnlockQueue( Queue_t * const pxQueue )
 			{
 				/* Tasks that are removed from the event list will get added to
 				the pending ready list as the scheduler is still suspended. */
+				//判断列表 xTasksWaitingToReceive 是否为空,如果不为空的话就要将相应的任务从列表中移除
 				if( listLIST_IS_EMPTY( &( pxQueue->xTasksWaitingToReceive ) ) == pdFALSE )
 				{
+					//将任务从列表 xTasksWaitingToReceive 中移除
 					if( xTaskRemoveFromEventList( &( pxQueue->xTasksWaitingToReceive ) ) != pdFALSE )
 					{
 						/* The task waiting has a higher priority so record that
 						a context switch is required. */
+						//如果刚刚从列表 xTasksWaitingToReceive 中移除的任务优先级比当前任务的优先级高,
+						//那么就要标记需要进行任务切换。这里调用函数 vTaskMissedYield()来完成此任务,函数
+						//vTaskMissedYield()只是简单的将全局变量 xYieldPending 设置为 pdTRUE。那么真正的任务切换
+						//是在哪里完成的呢?在时钟节拍处理函数 xTaskIncrementTick()中,此函数会判断 xYieldPending
+						//的值,从而决定是否进行任务切换
 						vTaskMissedYield();
 					}
 					else
@@ -1887,9 +2023,10 @@ static void prvUnlockQueue( Queue_t * const pxQueue )
 			}
 			#endif /* configUSE_QUEUE_SETS */
 
+			//每处理完一条就将 cTxLock 减一,直到处理完所有的。
 			--cTxLock;
 		}
-
+		//当处理完以后标记 cTxLock 为 queueUNLOCKED,也就说 cTxLock 是没有上锁的了。
 		pxQueue->cTxLock = queueUNLOCKED;
 	}
 	taskEXIT_CRITICAL();
