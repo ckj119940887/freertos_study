@@ -1927,7 +1927,8 @@ void vTaskStartScheduler( void )
 BaseType_t xReturn;
 
 	/* Add the idle task at the lowest priority. */
-	#if( configSUPPORT_STATIC_ALLOCATION == 1 )
+	//创建空闲任务，使用最低优先级
+	#if( configSUPPORT_STATIC_ALLOCATION == 1 )	//使用静态方法创建
 	{
 		StaticTask_t *pxIdleTaskTCBBuffer = NULL;
 		StackType_t *pxIdleTaskStackBuffer = NULL;
@@ -1953,7 +1954,7 @@ BaseType_t xReturn;
 			xReturn = pdFAIL;
 		}
 	}
-	#else
+	#else	//使用动态方法创建
 	{
 		/* The Idle task is being created using dynamically allocated RAM. */
 		xReturn = xTaskCreate(	prvIdleTask,
@@ -3283,6 +3284,7 @@ void vTaskMissedYield( void )
  * void prvIdleTask( void *pvParameters );
  *
  */
+//空闲任务的任务函数
 static portTASK_FUNCTION( prvIdleTask, pvParameters )
 {
 	/* Stop warnings. */
@@ -3295,6 +3297,9 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 	{
 		/* See if any tasks have deleted themselves - if so then the idle task
 		is responsible for freeing the deleted task's TCB and stack. */
+		//检查是否有任务要删除自己，如果有，则释放这些任务的任务控制块TCB和任务堆栈的内存
+		//当任务调用vTaskDelete删除自己时，此任务会添加到列表xTasksWaitingTermination中。
+		//该函数检查列表是否为空，如果不为空，则依次将列表中所有任务对应的内存释放掉(任务的TCB和任务堆栈内存)
 		prvCheckTasksWaitingTermination();
 
 		#if ( configUSE_PREEMPTION == 0 )
@@ -3307,6 +3312,7 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 		}
 		#endif /* configUSE_PREEMPTION */
 
+		//使用抢占式内核，同时空闲任务需要让出时间片给同优先级的其他就绪任务
 		#if ( ( configUSE_PREEMPTION == 1 ) && ( configIDLE_SHOULD_YIELD == 1 ) )
 		{
 			/* When using preemption tasks of equal priority will be
@@ -3318,6 +3324,8 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 			the list, and an occasional incorrect value will not matter.  If
 			the ready list at the idle priority contains more than one task
 			then a task other than the idle task is ready to execute. */
+			//当有任务和空闲任务共享一个优先级，并且此任务处于就绪态时，空闲任务应该放弃本时间片，
+			//将本时间片剩余的时间片让给这个就绪任务，如果在空闲任务优先级下的就序列表中有多个用户任务，则执行这些任务。
 			if( listCURRENT_LIST_LENGTH( &( pxReadyTasksLists[ tskIDLE_PRIORITY ] ) ) > ( UBaseType_t ) 1 )
 			{
 				taskYIELD();
@@ -3329,6 +3337,7 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 		}
 		#endif /* ( ( configUSE_PREEMPTION == 1 ) && ( configIDLE_SHOULD_YIELD == 1 ) ) */
 
+		//使能空闲任务钩子函数
 		#if ( configUSE_IDLE_HOOK == 1 )
 		{
 			extern void vApplicationIdleHook( void );
@@ -3338,6 +3347,7 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 			without the overhead of a separate task.
 			NOTE: vApplicationIdleHook() MUST NOT, UNDER ANY CIRCUMSTANCES,
 			CALL A FUNCTION THAT MIGHT BLOCK. */
+			//该函数由用户编写，该函数一定不能调用任何可以阻塞空闲任务的API函数
 			vApplicationIdleHook();
 		}
 		#endif /* configUSE_IDLE_HOOK */
@@ -3346,6 +3356,7 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 		to 1.  This is to ensure portSUPPRESS_TICKS_AND_SLEEP() is called when
 		user defined low power mode	implementations require
 		configUSE_TICKLESS_IDLE to be set to a value other than 1. */
+		//使能低功耗Tickless模式
 		#if ( configUSE_TICKLESS_IDLE != 0 )
 		{
 		TickType_t xExpectedIdleTime;
@@ -3355,10 +3366,12 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 			test of the expected idle time is performed without the
 			scheduler suspended.  The result here is not necessarily
 			valid. */
+			//获取处理器进入低功耗模式的时长
 			xExpectedIdleTime = prvGetExpectedIdleTime();
 
 			if( xExpectedIdleTime >= configEXPECTED_IDLE_TIME_BEFORE_SLEEP )
 			{
+				//挂起任务调度器，起到临界段代码保护功能
 				vTaskSuspendAll();
 				{
 					/* Now the scheduler is suspended, the expected idle
